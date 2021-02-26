@@ -12,14 +12,26 @@ let y = d3.scaleLinear()
 	.domain([0, 1])
 	.range([height, 0]);
 
+let color = d3.scaleLinear()
+	.domain([0, 1])
+	.range([255, 0])
 
-let csv = null; //to be used for data later
+
 const unique = (value, index, self) => self.indexOf(value) === index; 
 
-d3.csv("all_results_norm.csv", d => {
-	csv = d; 
+const make_url = (d) => {
+	let base = "https://www.kmjn.org/temp/ale2/"
+	let game = d.Game;
+	let depth = d["Rollout depth"]
+	let limit = d["Turn limit"]
+	let time = d["Time limit"].substring(1)
+	let skip = d.Frameskip
+	return `${base + game}_depth${depth}_limit${limit}_time${time}_skip${skip}.mp4`
+}
+
+d3.csv("all_results_norm.csv", csv => {
 	const unique = (value, index, self) => self.indexOf(value) === index; 
-	const games = d.map(x => x.Game).filter(unique);
+	const games = csv.map(x => x.Game).filter(unique);
 	//populate dropdown
 	d3.select("#dropdown")
 		.selectAll("games")
@@ -28,22 +40,14 @@ d3.csv("all_results_norm.csv", d => {
 		.append("option")
 			.attr("value", d => d)
 			.html(d => d)
+
 	d3.select("#dropdown")
-		.on("change", draw)
-
-	draw()
-})
-
-const draw = () => {
-	//this next bit is hacky, should find a way to use enter/exit
-	let prev = document.querySelector("svg")
-	if (prev) {
-		prev.remove()
-	}
-	const game = document.getElementById("dropdown").value;
-	console.log(game)
-	const data = csv.filter(d => d.Game == game)
+		.on("change", () => update(csv))
 	
+	//video on change
+	d3.select("video")
+		.on("mouseout", d => d3.select("video").style("display", "none"))
+
 	let svg = d3.select("#main")
 		.append("svg")
 			.attr("width", width + margin.left + margin.right)
@@ -52,32 +56,64 @@ const draw = () => {
 			.attr("transform", `translate(${margin.left}, ${margin.top})`);
 	// Add X axis
 	svg.append("g")
-		.attr("transform", `translate(0,${ height })`)
+		.attr("transform", `translate(0,${height})`)
 		.call(d3.axisBottom(x));
 
 	// Add Y axis
 	svg.append("g")
 		.call(d3.axisLeft(y));
-	svg.append('g')
-		.selectAll("dot")
+
+	update(csv)
+})
+
+const update = (csv) => {
+	const game = d3.select("#dropdown").node().value
+	const data = csv.filter(d => d.Game == game)
+	
+	d3.select("svg")
+		.select("g")
+		.selectAll("a")
+		.remove()
+
+	const sel = d3.select("svg")
+		.select("g")
+		.selectAll("a")
 		.data(data)
-		.enter()
+	
+	sel.enter()
 		.append("a")
-			.attr("href", 
-				d => {
-					let base = "https://www.kmjn.org/temp/ale2/"
-					let game = d.Game;
-					let depth = d["Rollout depth"]
-					let limit = d["Turn limit"]
-					let time = d["Time limit"].substring(1)
-					let skip = d.Frameskip
-					return `${base + game}_depth${depth}_limit${limit}_time${time}_skip${skip}.mp4`
-				})
+		.merge(sel)
+			.attr("href", make_url)
+			// need to use function over arrow syntax to get right 'this'
+			.on('mouseover', function(d) {
+				d3.select("#vidsource")
+					.attr("src", make_url(d))
+				
+				let [x, y] = d3.mouse(this)
+				d3.select("#video")
+					.style("left", x+"px")
+					.style("top", y+"px")
+					.style("display", "block")
+
+				d3.select("#video")
+					.node().load()
+					
+			})
 			.append("circle")
 				.attr("cx", d => x(+d["Rollout depth"]) )
 				.attr("cy", d => y(+d["Time limit"]) )
-				.attr("r", d => 2*d["Normscore"] + 2)
-				.style("fill", "#69b3a2")
+				.attr("r", d => 3)
+				.style("fill", d => {
+					let score = d["Normscore"]
+					let r = color(score)
+					let g = color(score)/2 + 128
+					return `rgb(${r}, ${g}, 255)`
+				})
+				.style("stroke", "black")
+
+	sel.exit()
+		.remove()
+
 }
 
 
